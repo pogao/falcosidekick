@@ -161,7 +161,7 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 	// defer + recover to catch panic if output doesn't respond
 	defer func() {
 		if err := recover(); err != nil {
-			c.logging.Error().Msgf("%v - %v\n", c.OutputType, err)
+			c.logging.Error().Err(fmt.Errorf("%v", err)).Str("output-type", c.OutputType).Msg("")
 		}
 	}()
 
@@ -170,18 +170,18 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 	case influxdbPayload:
 		fmt.Fprintf(body, "%v", payload)
 		if c.Config.Debug {
-			c.logging.Debug().Msgf("%v payload : %v\n", c.OutputType, body)
+			c.logging.Debug().Str("output-type", c.OutputType).Str("payload", body.String()).Msg("")
 		}
 	case spyderbatPayload:
 		zipper := gzip.NewWriter(body)
 		if err := json.NewEncoder(zipper).Encode(payload); err != nil {
-			c.logging.Error().Msgf("%v - %s\n", c.OutputType, err)
+			c.logging.Error().Err(fmt.Errorf("%v", err)).Str("output-type", c.OutputType).Msg("")
 		}
 		zipper.Close()
 		if c.Config.Debug {
 			debugBody := new(bytes.Buffer)
 			if err := json.NewEncoder(debugBody).Encode(payload); err == nil {
-				c.logging.Debug().Msgf("%v payload : %v\n", c.OutputType, debugBody)
+				c.logging.Debug().Str("output-type", c.OutputType).Str("payload", debugBody.String()).Msg("")
 			}
 		}
 	default:
@@ -189,7 +189,7 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 			c.logging.Error().Err(err).Msgf("")
 		}
 		if c.Config.Debug {
-			c.logging.Debug().Msgf("%v payload : %v\n", c.OutputType, body)
+			c.logging.Debug().Str("output-type", c.OutputType).Str("payload", body.String()).Msg("")
 		}
 	}
 
@@ -269,44 +269,44 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent: //200, 201, 202, 204
-		c.logging.Info().Msgf("%v - Post OK (%v)\n", c.OutputType, resp.StatusCode)
+		c.logging.Info().Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Msgf("Post Ok")
 		body, _ := ioutil.ReadAll(resp.Body)
 		if ot := c.OutputType; ot == Kubeless || ot == Openfaas || ot == Fission {
-			c.logging.Info().Msgf("%v - Function Response : %v\n", ot, string(body))
+			c.logging.Info().Str("output-type", ot).Str("payload", string(body)).Msg("Function response")
 		}
 		return nil
 	case http.StatusBadRequest: //400
 		body, _ := ioutil.ReadAll(resp.Body)
-		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrHeaderMissing, resp.StatusCode, string(body))
+		c.logging.Error().Err(ErrHeaderMissing).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Str("payload", string(body)).Msg("")
 		return ErrHeaderMissing
 	case http.StatusUnauthorized: //401
 		body, _ := ioutil.ReadAll(resp.Body)
-		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrClientAuthenticationError, resp.StatusCode, string(body))
+		c.logging.Error().Err(ErrClientAuthenticationError).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Str("payload", string(body)).Msg("")
 		return ErrClientAuthenticationError
 	case http.StatusForbidden: //403
 		body, _ := ioutil.ReadAll(resp.Body)
-		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrForbidden, resp.StatusCode, string(body))
+		c.logging.Error().Err(ErrForbidden).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Str("payload", string(body)).Msg("")
 		return ErrForbidden
 	case http.StatusNotFound: //404
 		body, _ := ioutil.ReadAll(resp.Body)
-		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrNotFound, resp.StatusCode, string(body))
+		c.logging.Error().Err(ErrNotFound).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Str("payload", string(body)).Msg("")
 		return ErrNotFound
 	case http.StatusUnprocessableEntity: //422
 		body, _ := ioutil.ReadAll(resp.Body)
-		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrUnprocessableEntityError, resp.StatusCode, string(body))
+		c.logging.Error().Err(ErrUnprocessableEntityError).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Str("payload", string(body)).Msg("")
 		return ErrUnprocessableEntityError
 	case http.StatusTooManyRequests: //429
 		body, _ := ioutil.ReadAll(resp.Body)
-		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrTooManyRequest, resp.StatusCode, string(body))
+		c.logging.Error().Err(ErrTooManyRequest).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Str("payload", string(body)).Msg("")
 		return ErrTooManyRequest
 	case http.StatusInternalServerError: //500
-		c.logging.Error().Msgf("%v - %v (%v)\n", c.OutputType, ErrTooManyRequest, resp.StatusCode)
+		c.logging.Error().Err(ErrTooManyRequest).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Msg("")
 		return ErrInternalServer
 	case http.StatusBadGateway: //502
-		c.logging.Error().Msgf("%v - %v (%v)\n", c.OutputType, ErrTooManyRequest, resp.StatusCode)
+		c.logging.Error().Err(ErrTooManyRequest).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Msg("")
 		return ErrBadGateway
 	default:
-		c.logging.Error().Msgf("%v - unexpected Response  (%v)\n", c.OutputType, resp.StatusCode)
+		c.logging.Error().Err(fmt.Errorf("Unexpected response")).Str("output-type", c.OutputType).Int("response-status-code", resp.StatusCode).Msg("")
 		return errors.New(resp.Status)
 	}
 }
