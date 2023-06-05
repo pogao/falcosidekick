@@ -8,6 +8,7 @@ import (
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -21,7 +22,7 @@ const FissionContentType = "application/json"
 
 // NewFissionClient returns a new output.Client for accessing Kubernetes.
 func NewFissionClient(config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics,
-	statsdClient, dogstatsdClient *statsd.Client) (*Client, error) {
+	statsdClient, dogstatsdClient *statsd.Client, logging *zerolog.Logger) (*Client, error) {
 	if config.Fission.KubeConfig != "" {
 		restConfig, err := clientcmd.BuildConfigFromFlags("", config.Fission.KubeConfig)
 		if err != nil {
@@ -39,6 +40,7 @@ func NewFissionClient(config *types.Configuration, stats *types.Statistics, prom
 			StatsdClient:     statsdClient,
 			DogstatsdClient:  dogstatsdClient,
 			KubernetesClient: clientset,
+			logging:          logging,
 		}, nil
 	}
 	return NewClient(
@@ -53,6 +55,7 @@ func NewFissionClient(config *types.Configuration, stats *types.Statistics, prom
 		promStats,
 		statsdClient,
 		dogstatsdClient,
+		logging,
 	)
 }
 

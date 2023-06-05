@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"regexp"
 	"strings"
 
@@ -49,14 +48,14 @@ func getFalcoNewCounterVec(config *types.Configuration) *prometheus.CounterVec {
 	}
 	for i := range config.Customfields {
 		if !regPromLabels.MatchString(i) {
-			log.Printf("[ERROR] : Custom field '%v' is not a valid prometheus label", i)
+			logging.Error().Str("customfield", i).Msg("Custom field is not a valid prometheus label")
 			continue
 		}
 		labelnames = append(labelnames, i)
 	}
 	for _, i := range config.Prometheus.ExtraLabelsList {
 		if !regPromLabels.MatchString(strings.ReplaceAll(i, ".", "_")) {
-			log.Printf("[ERROR] : Extra field '%v' is not a valid prometheus label", i)
+			logging.Error().Str("extra_label", i).Msg("Extra field is not a valid prometheus label")
 			continue
 		}
 		labelnames = append(labelnames, strings.ReplaceAll(i, ".", "_"))

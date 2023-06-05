@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"text/template"
@@ -120,12 +119,12 @@ func newFalcoPayload(payload io.Reader) (types.FalcoPayload, error) {
 		for key, value := range config.Templatedfields {
 			tmpl, err := template.New("").Parse(value)
 			if err != nil {
-				log.Printf("[ERROR] : Parsing error for templated field '%v': %v\n", key, err)
+				logging.Error().Err(err).Str("key:", key).Str("value:", value).Msg("Parsing error for templated field")
 				continue
 			}
 			v := new(bytes.Buffer)
 			if err := tmpl.Execute(v, falcopayload.OutputFields); err != nil {
-				log.Printf("[ERROR] : Parsing error for templated field '%v': %v\n", key, err)
+				logging.Error().Err(err).Str("key:", key).Str("value:", value).Msg("Parsing error for templated field")
 			}
 			falcopayload.OutputFields[key] = v.String()
 		}
@@ -169,7 +168,7 @@ func newFalcoPayload(payload io.Reader) (types.FalcoPayload, error) {
 
 	if config.Debug {
 		body, _ := json.Marshal(falcopayload)
-		log.Printf("[DEBUG] : Falco's payload : %v\n", string(body))
+		logging.Debug().Msgf("Falco's payload : %v\n", string(body))
 	}
 
 	return falcopayload, nil

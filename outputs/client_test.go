@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/falcosecurity/falcosidekick/types"
@@ -27,6 +28,13 @@ import (
 
 var falcoTestInput = `{"output":"This is a test from falcosidekick","priority":"Debug","rule":"Test rule", "time":"2001-01-01T01:10:00Z","source":"syscalls","output_fields": {"proc.name":"falcosidekick", "proc.tty": 1234}, "tags":["test","example"], "hostname":"test-host"}`
 
+func getLogger() *zerolog.Logger {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	logging := zerolog.New(os.Stdout).With().Timestamp().Logger()
+
+	return &logging
+}
 func TestNewClient(t *testing.T) {
 	u, _ := url.Parse("http://localhost")
 
@@ -35,10 +43,10 @@ func TestNewClient(t *testing.T) {
 	promStats := &types.PromStatistics{}
 
 	testClientOutput := Client{OutputType: "test", EndpointURL: u, MutualTLSEnabled: false, CheckCert: true, HeaderList: []Header{}, ContentType: "application/json; charset=utf-8", Config: config, Stats: stats, PromStats: promStats}
-	_, err := NewClient("test", "localhost/%*$¨^!/:;", false, true, config, stats, promStats, nil, nil)
+	_, err := NewClient("test", "localhost/%*$¨^!/:;", false, true, config, stats, promStats, nil, nil, getLogger())
 	require.NotNil(t, err)
 
-	nc, err := NewClient("test", "http://localhost", false, true, config, stats, promStats, nil, nil)
+	nc, err := NewClient("test", "http://localhost", false, true, config, stats, promStats, nil, nil, getLogger())
 	require.Nil(t, err)
 	require.Equal(t, &testClientOutput, nc)
 }
@@ -77,7 +85,7 @@ func TestPost(t *testing.T) {
 		"/429": ErrTooManyRequest,
 		"/502": ErrBadGateway,
 	} {
-		nc, err := NewClient("", ts.URL+i, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil)
+		nc, err := NewClient("", ts.URL+i, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil, getLogger())
 		require.Nil(t, err)
 		require.NotEmpty(t, nc)
 
@@ -92,7 +100,7 @@ func TestAddHeader(t *testing.T) {
 		passedVal := r.Header.Get(headerKey)
 		require.Equal(t, passedVal, headerVal)
 	}))
-	nc, err := NewClient("", ts.URL, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil)
+	nc, err := NewClient("", ts.URL, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil, getLogger())
 	require.Nil(t, err)
 	require.NotEmpty(t, nc)
 
@@ -143,7 +151,7 @@ func TestAddBasicAuth(t *testing.T) {
 		// and that should be the provided value.
 		require.Equal(t, digest, "dXNlcjpwYXNz")
 	}))
-	nc, err := NewClient("", ts.URL, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil)
+	nc, err := NewClient("", ts.URL, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil, getLogger())
 	require.Nil(t, err)
 	require.NotEmpty(t, nc)
 
@@ -159,7 +167,7 @@ func TestHeadersResetAfterReq(t *testing.T) {
 		require.Equal(t, 1, len(passedList), "Expected %v to have 1 element", passedList)
 	}))
 
-	nc, err := NewClient("", ts.URL, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil)
+	nc, err := NewClient("", ts.URL, false, true, &types.Configuration{}, &types.Statistics{}, &types.PromStatistics{}, nil, nil, getLogger())
 	require.Nil(t, err)
 	require.NotEmpty(t, nc)
 
@@ -205,7 +213,7 @@ func TestMutualTlsPost(t *testing.T) {
 	server.StartTLS()
 	defer server.Close()
 
-	nc, err := NewClient("", server.URL+"/200", true, true, config, &types.Statistics{}, &types.PromStatistics{}, nil, nil)
+	nc, err := NewClient("", server.URL+"/200", true, true, config, &types.Statistics{}, &types.PromStatistics{}, nil, nil, getLogger())
 	require.Nil(t, err)
 	require.NotEmpty(t, nc)
 

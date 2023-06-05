@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -18,6 +17,7 @@ import (
 	"sync"
 
 	crdClient "github.com/kubernetes-sigs/wg-policy-prototypes/policy-report/kube-bench-adapter/pkg/generated/v1alpha2/clientset/versioned"
+	"github.com/rs/zerolog"
 
 	gcpfunctions "cloud.google.com/go/functions/apiv1"
 	"github.com/streadway/amqp"
@@ -123,22 +123,24 @@ type Client struct {
 	MQTTClient        mqtt.Client
 	TimescaleDBClient *timescaledb.Pool
 	RedisClient       *redis.Client
+
+	logging *zerolog.Logger
 }
 
 // NewClient returns a new output.Client for accessing the different API.
-func NewClient(outputType string, defaultEndpointURL string, mutualTLSEnabled bool, checkCert bool, config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics, statsdClient, dogstatsdClient *statsd.Client) (*Client, error) {
+func NewClient(outputType string, defaultEndpointURL string, mutualTLSEnabled bool, checkCert bool, config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics, statsdClient, dogstatsdClient *statsd.Client, logging *zerolog.Logger) (*Client, error) {
 	reg := regexp.MustCompile(`(http|nats)(s?)://.*`)
 	if !reg.MatchString(defaultEndpointURL) {
-		log.Printf("[ERROR] : %v - %v\n", outputType, "Bad Endpoint")
+		logging.Printf("[ERROR] : %v - %v\n", outputType, "Bad Endpoint")
 		return nil, ErrClientCreation
 	}
 	if _, err := url.ParseRequestURI(defaultEndpointURL); err != nil {
-		log.Printf("[ERROR] : %v - %v\n", outputType, err.Error())
+		logging.Printf("[ERROR] : %v - %v\n", outputType, err.Error())
 		return nil, ErrClientCreation
 	}
 	endpointURL, err := url.Parse(defaultEndpointURL)
 	if err != nil {
-		log.Printf("[ERROR] : %v - %v\n", outputType, err.Error())
+		logging.Printf("[ERROR] : %v - %v\n", outputType, err.Error())
 		return nil, ErrClientCreation
 	}
 	return &Client{OutputType: outputType, EndpointURL: endpointURL, MutualTLSEnabled: mutualTLSEnabled, CheckCert: checkCert, HeaderList: []Header{}, ContentType: DefaultContentType, Config: config, Stats: stats, PromStats: promStats, StatsdClient: statsdClient, DogstatsdClient: dogstatsdClient}, nil
@@ -159,7 +161,7 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 	// defer + recover to catch panic if output doesn't respond
 	defer func() {
 		if err := recover(); err != nil {
-			log.Printf("[ERROR] : %v - %s", c.OutputType, err)
+			c.logging.Error().Msgf("%v - %v\n", c.OutputType, err)
 		}
 	}()
 
@@ -168,26 +170,26 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 	case influxdbPayload:
 		fmt.Fprintf(body, "%v", payload)
 		if c.Config.Debug {
-			log.Printf("[DEBUG] : %v payload : %v\n", c.OutputType, body)
+			c.logging.Debug().Msgf("%v payload : %v\n", c.OutputType, body)
 		}
 	case spyderbatPayload:
 		zipper := gzip.NewWriter(body)
 		if err := json.NewEncoder(zipper).Encode(payload); err != nil {
-			log.Printf("[ERROR] : %v - %s", c.OutputType, err)
+			c.logging.Error().Msgf("%v - %s\n", c.OutputType, err)
 		}
 		zipper.Close()
 		if c.Config.Debug {
 			debugBody := new(bytes.Buffer)
 			if err := json.NewEncoder(debugBody).Encode(payload); err == nil {
-				log.Printf("[DEBUG] : %v payload : %v\n", c.OutputType, debugBody)
+				c.logging.Debug().Msgf("%v payload : %v\n", c.OutputType, debugBody)
 			}
 		}
 	default:
 		if err := json.NewEncoder(body).Encode(payload); err != nil {
-			log.Printf("[ERROR] : %v - %s", c.OutputType, err)
+			c.logging.Error().Err(err).Msgf("")
 		}
 		if c.Config.Debug {
-			log.Printf("[DEBUG] : %v payload : %v\n", c.OutputType, body)
+			c.logging.Debug().Msgf("%v payload : %v\n", c.OutputType, body)
 		}
 	}
 
@@ -213,13 +215,13 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 		}
 		cert, err := tls.LoadX509KeyPair(MutualTLSClientCertPath, MutualTLSClientKeyPath)
 		if err != nil {
-			log.Printf("[ERROR] : %v - %v\n", c.OutputType, err.Error())
+			c.logging.Error().Err(err).Msgf("")
 		}
 
 		// Load CA cert
 		caCert, err := ioutil.ReadFile(MutualTLSClientCaCertPath)
 		if err != nil {
-			log.Printf("[ERROR] : %v - %v\n", c.OutputType, err.Error())
+			c.logging.Error().Err(err).Msgf("")
 		}
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -243,7 +245,7 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 
 	req, err := http.NewRequest(method, c.EndpointURL.String(), body)
 	if err != nil {
-		log.Printf("[ERROR] : %v - %v\n", c.OutputType, err.Error())
+		c.logging.Error().Err(err).Msgf("")
 	}
 
 	req.Header.Add(ContentTypeHeaderKey, c.ContentType)
@@ -255,7 +257,7 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("[ERROR] : %v - %v\n", c.OutputType, err.Error())
+		c.logging.Error().Err(err).Msgf("")
 		go c.CountMetric("outputs", 1, []string{"output:" + strings.ToLower(c.OutputType), "status:connectionrefused"})
 		return err
 	}
@@ -267,44 +269,44 @@ func (c *Client) sendRequest(method string, payload interface{}) error {
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent: //200, 201, 202, 204
-		log.Printf("[INFO]  : %v - Post OK (%v)\n", c.OutputType, resp.StatusCode)
+		c.logging.Info().Msgf("%v - Post OK (%v)\n", c.OutputType, resp.StatusCode)
 		body, _ := ioutil.ReadAll(resp.Body)
 		if ot := c.OutputType; ot == Kubeless || ot == Openfaas || ot == Fission {
-			log.Printf("[INFO]  : %v - Function Response : %v\n", ot, string(body))
+			c.logging.Info().Msgf("%v - Function Response : %v\n", ot, string(body))
 		}
 		return nil
 	case http.StatusBadRequest: //400
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("[ERROR] : %v - %v (%v): %v\n", c.OutputType, ErrHeaderMissing, resp.StatusCode, string(body))
+		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrHeaderMissing, resp.StatusCode, string(body))
 		return ErrHeaderMissing
 	case http.StatusUnauthorized: //401
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("[ERROR] : %v - %v (%v): %v\n", c.OutputType, ErrClientAuthenticationError, resp.StatusCode, string(body))
+		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrClientAuthenticationError, resp.StatusCode, string(body))
 		return ErrClientAuthenticationError
 	case http.StatusForbidden: //403
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("[ERROR] : %v - %v (%v): %v\n", c.OutputType, ErrForbidden, resp.StatusCode, string(body))
+		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrForbidden, resp.StatusCode, string(body))
 		return ErrForbidden
 	case http.StatusNotFound: //404
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("[ERROR] : %v - %v (%v): %v\n", c.OutputType, ErrNotFound, resp.StatusCode, string(body))
+		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrNotFound, resp.StatusCode, string(body))
 		return ErrNotFound
 	case http.StatusUnprocessableEntity: //422
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("[ERROR] : %v - %v (%v): %v\n", c.OutputType, ErrUnprocessableEntityError, resp.StatusCode, string(body))
+		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrUnprocessableEntityError, resp.StatusCode, string(body))
 		return ErrUnprocessableEntityError
 	case http.StatusTooManyRequests: //429
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Printf("[ERROR] : %v - %v (%v): %v\n", c.OutputType, ErrTooManyRequest, resp.StatusCode, string(body))
+		c.logging.Error().Msgf("%v - %v (%v): %v\n", c.OutputType, ErrTooManyRequest, resp.StatusCode, string(body))
 		return ErrTooManyRequest
 	case http.StatusInternalServerError: //500
-		log.Printf("[ERROR] : %v - %v (%v)\n", c.OutputType, ErrTooManyRequest, resp.StatusCode)
+		c.logging.Error().Msgf("%v - %v (%v)\n", c.OutputType, ErrTooManyRequest, resp.StatusCode)
 		return ErrInternalServer
 	case http.StatusBadGateway: //502
-		log.Printf("[ERROR] : %v - %v (%v)\n", c.OutputType, ErrTooManyRequest, resp.StatusCode)
+		c.logging.Error().Msgf("%v - %v (%v)\n", c.OutputType, ErrTooManyRequest, resp.StatusCode)
 		return ErrBadGateway
 	default:
-		log.Printf("[ERROR] : %v - unexpected Response  (%v)\n", c.OutputType, resp.StatusCode)
+		c.logging.Error().Msgf("%v - unexpected Response  (%v)\n", c.OutputType, resp.StatusCode)
 		return errors.New(resp.Status)
 	}
 }

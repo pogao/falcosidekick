@@ -8,6 +8,7 @@ import (
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -23,7 +24,7 @@ const KubelessEventTypeValue = "falco"
 const KubelessContentType = "application/json"
 
 // NewKubelessClient returns a new output.Client for accessing Kubernetes.
-func NewKubelessClient(config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics, statsdClient, dogstatsdClient *statsd.Client) (*Client, error) {
+func NewKubelessClient(config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics, statsdClient, dogstatsdClient *statsd.Client, logging *zerolog.Logger) (*Client, error) {
 	if config.Kubeless.Kubeconfig != "" {
 		restConfig, err := clientcmd.BuildConfigFromFlags("", config.Kubeless.Kubeconfig)
 		if err != nil {
@@ -41,6 +42,7 @@ func NewKubelessClient(config *types.Configuration, stats *types.Statistics, pro
 			StatsdClient:     statsdClient,
 			DogstatsdClient:  dogstatsdClient,
 			KubernetesClient: clientset,
+			logging:          logging,
 		}, nil
 	}
 	return NewClient(
@@ -53,6 +55,7 @@ func NewKubelessClient(config *types.Configuration, stats *types.Statistics, pro
 		promStats,
 		statsdClient,
 		dogstatsdClient,
+		logging,
 	)
 }
 

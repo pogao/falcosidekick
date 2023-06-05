@@ -8,6 +8,7 @@ import (
 
 	"github.com/DataDog/datadog-go/statsd"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -15,7 +16,7 @@ import (
 )
 
 // NewOpenfaasClient returns a new output.Client for accessing Kubernetes.
-func NewOpenfaasClient(config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics, statsdClient, dogstatsdClient *statsd.Client) (*Client, error) {
+func NewOpenfaasClient(config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics, statsdClient, dogstatsdClient *statsd.Client, logging *zerolog.Logger) (*Client, error) {
 	if config.Openfaas.Kubeconfig != "" {
 		restConfig, err := clientcmd.BuildConfigFromFlags("", config.Openfaas.Kubeconfig)
 		if err != nil {
@@ -33,6 +34,7 @@ func NewOpenfaasClient(config *types.Configuration, stats *types.Statistics, pro
 			StatsdClient:     statsdClient,
 			DogstatsdClient:  dogstatsdClient,
 			KubernetesClient: clientset,
+			logging:          logging,
 		}, nil
 	}
 	return NewClient(
@@ -45,6 +47,7 @@ func NewOpenfaasClient(config *types.Configuration, stats *types.Statistics, pro
 		promStats,
 		statsdClient,
 		dogstatsdClient,
+		logging,
 	)
 }
 
