@@ -131,16 +131,16 @@ type Client struct {
 func NewClient(outputType string, defaultEndpointURL string, mutualTLSEnabled bool, checkCert bool, config *types.Configuration, stats *types.Statistics, promStats *types.PromStatistics, statsdClient, dogstatsdClient *statsd.Client, logging *zerolog.Logger) (*Client, error) {
 	reg := regexp.MustCompile(`(http|nats)(s?)://.*`)
 	if !reg.MatchString(defaultEndpointURL) {
-		logging.Printf("[ERROR] : %v - %v\n", outputType, "Bad Endpoint")
+		logging.Error().Err(fmt.Errorf("%s", "Bad Endpoint")).Str("output-type", outputType).Msg("")
 		return nil, ErrClientCreation
 	}
 	if _, err := url.ParseRequestURI(defaultEndpointURL); err != nil {
-		logging.Printf("[ERROR] : %v - %v\n", outputType, err.Error())
+		logging.Error().Err(err).Str("output-type", outputType).Msg("")
 		return nil, ErrClientCreation
 	}
 	endpointURL, err := url.Parse(defaultEndpointURL)
 	if err != nil {
-		logging.Printf("[ERROR] : %v - %v\n", outputType, err.Error())
+		logging.Error().Err(err).Str("output-type", outputType).Msg("")
 		return nil, ErrClientCreation
 	}
 	return &Client{OutputType: outputType, EndpointURL: endpointURL, MutualTLSEnabled: mutualTLSEnabled, CheckCert: checkCert, HeaderList: []Header{}, ContentType: DefaultContentType, Config: config, Stats: stats, PromStats: promStats, StatsdClient: statsdClient, DogstatsdClient: dogstatsdClient}, nil
