@@ -5,11 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-<<<<<<< HEAD
 	"io/ioutil"
-	"log"
-=======
->>>>>>> 1d81920 (Modify code to use Zerolog as new logger)
 	"net/http"
 	"os"
 	"regexp"
@@ -717,7 +713,7 @@ func init() {
 
 	if config.OpenObserve.HostPort != "" {
 		var err error
-		openObserveClient, err = outputs.NewClient("OpenObserve", config.OpenObserve.HostPort+"/api/"+config.OpenObserve.OrganizationName+"/"+config.OpenObserve.StreamName+"/_multi", config.OpenObserve.MutualTLS, config.OpenObserve.CheckCert, config, stats, promStats, statsdClient, dogstatsdClient)
+		openObserveClient, err = outputs.NewClient("OpenObserve", config.OpenObserve.HostPort+"/api/"+config.OpenObserve.OrganizationName+"/"+config.OpenObserve.StreamName+"/_multi", config.OpenObserve.MutualTLS, config.OpenObserve.CheckCert, config, stats, promStats, statsdClient, dogstatsdClient, logging)
 		if err != nil {
 			config.OpenObserve.HostPort = ""
 		} else {
@@ -754,12 +750,12 @@ func main() {
 	if config.TLSServer.Deploy {
 		if config.TLSServer.MutualTLS {
 			if config.Debug {
-				log.Printf("[DEBUG] : running mTLS server")
+				logging.Debug().Msgf("running mTLS server")
 			}
 
 			caCert, err := ioutil.ReadFile(config.TLSServer.CaCertFile)
 			if err != nil {
-				log.Printf("[ERROR] : %v\n", err.Error())
+				logging.Error().Err(err).Msg("Error while reading CA certificate")
 			}
 			caCertPool := x509.NewCertPool()
 			caCertPool.AppendCertsFromPEM(caCert)
@@ -772,21 +768,22 @@ func main() {
 		}
 
 		if config.Debug && !config.TLSServer.MutualTLS {
-			log.Printf("[DEBUG] : running TLS server")
+			logging.Debug().Msgf("running TLS server")
 		}
 
 		if err := server.ListenAndServeTLS(config.TLSServer.CertFile, config.TLSServer.KeyFile); err != nil {
-			log.Fatalf("[ERROR] : %v", err.Error())
+			logging.Fatal().Err(err).Msgf("Error while starting Falco Sidekick")
 		}
 	} else {
 		if config.Debug {
-			log.Printf("[DEBUG] : running HTTP server")
+			logging.Debug().Msgf("running HTTP server")
 		}
 
 		if config.TLSServer.MutualTLS {
-			log.Printf("[WARN] : tlsserver.deploy is false but tlsserver.mutualtls is true, change tlsserver.deploy to true to use mTLS")
+			logging.Warn().Msgf("tlsserver.deploy is false but tlsserver.mutualtls is true, change tlsserver.deploy to true to use mTLS")
 		}
 		if err := server.ListenAndServe(); err != nil {
 			logging.Fatal().Err(err).Msgf("Error while starting Falco Sidekick")
 		}
+	}
 }
